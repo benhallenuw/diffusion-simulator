@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>3 Models of Diffusion</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500;600&display=swap');
+
+  :root {
+    --bg: #f5f2eb;
+    --surface: #faf8f3;
+    --border: #d8d0c0;
+    --border-light: #e8e2d6;
+    --text: #1a1710;
+    --text-muted: #6b6355;
+    --text-faint: #9c9080;
+    --accent-broadcast: #c0392b;
+    --accent-contagion: #1a6b9a;
+    --accent-outreach: #2d7a4f;
+    --accent-reinvest: #7a4f2d;
+    --chart-line: #1a1710;
+    --toggle-on: #1a1710;
+    --toggle-off: #c8c0b0;
+    --highlight: #e8e2d6;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 0;
+  }
+
+  header {
+    border-bottom: 2px solid var(--text);
+    padding: 24px 40px 20px;
+    display: flex;
+    align-items: baseline;
+    gap: 20px;
+    background: var(--bg);
+  }
+
+  header h1 {
+    font-family: 'DM Serif Display', serif;
+    font-size: 1.8rem;
+    letter-spacing: -0.01em;
+    line-height: 1;
+  }
+
+  header .subtitle {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    font-weight: 400;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 340px 1fr;
+    min-height: calc(100vh - 73px);
+  }
+
+  /* CONTROLS PANEL */
+  .controls {
+    border-right: 2px solid var(--text);
+    padding: 0;
+    overflow-y: auto;
+    background: var(--surface);
+  }
+
+  .controls-section {
+    border-bottom: 1px solid var(--border);
+    padding: 20px 24px;
+  }
+
+  .controls-section:last-child {
+    border-bottom: none;
+  }
+
+  .section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+    gap: 10px;
+  }
+
+  .section-title {
+    font-family: 'DM Serif Display', serif;
+    font-size: 1.05rem;
+    letter-spacing: -0.01em;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .section-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .dot-broadcast { background: var(--accent-broadcast); }
+  .dot-contagion { background: var(--accent-contagion); }
+  .dot-outreach  { background: var(--accent-outreach); }
+
+  .section-desc {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    line-height: 1.5;
+    margin-bottom: 14px;
+    font-style: italic;
+  }
+
+  /* Toggle switch */
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+
+  .toggle-label {
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+
+  .toggle {
+    position: relative;
+    width: 44px;
+    height: 24px;
+    cursor: pointer;
+  }
+
+  .toggle input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+    position: absolute;
+  }
+
+  .toggle-track {
+    position: absolute;
+    inset: 0;
+    border-radius: 12px;
+    background: var(--toggle-off);
+    border: 1.5px solid var(--border);
+    transition: background 0.2s, border-color 0.2s;
+  }
+
+  .toggle input:checked ~ .toggle-track {
+    background: var(--toggle-on);
+    border-color: var(--toggle-on);
+  }
+
+  .toggle-thumb {
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: white;
+    transition: transform 0.2s;
+    pointer-events: none;
+  }
+
+  .toggle input:checked ~ .toggle-track ~ .toggle-thumb {
+    transform: translateX(20px);
+  }
+
+  /* Sub-toggle (reinvestment) */
+  .sub-section {
+    margin-top: 12px;
+    padding: 12px 14px;
+    background: var(--highlight);
+    border-radius: 6px;
+    border: 1px solid var(--border-light);
+    transition: opacity 0.2s;
+  }
+
+  .sub-section.disabled {
+    opacity: 0.45;
+    pointer-events: none;
+  }
+
+  .sub-section .section-desc {
+    margin-bottom: 10px;
+  }
+
+  /* Input rows */
+  .input-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+    gap: 8px;
+  }
+
+  .input-row:last-child { margin-bottom: 0; }
+
+  .input-label {
+    font-size: 0.8rem;
+    color: var(--text);
+    font-weight: 500;
+    flex: 1;
+    line-height: 1.3;
+  }
+
+  .input-hint {
+    font-size: 0.7rem;
+    color: var(--text-faint);
+    font-style: italic;
+    display: block;
+    margin-top: 1px;
+  }
+
+  input[type="number"] {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.85rem;
+    width: 90px;
+    padding: 6px 10px;
+    border: 1.5px solid var(--border);
+    border-radius: 4px;
+    background: white;
+    color: var(--text);
+    text-align: right;
+    transition: border-color 0.15s;
+    -moz-appearance: textfield;
+  }
+
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; }
+
+  input[type="number"]:focus {
+    outline: none;
+    border-color: var(--text);
+  }
+
+  /* Population section */
+  .pop-section {
+    background: var(--bg);
+    border-bottom: 2px solid var(--text);
+  }
+
+  .pop-section .section-title {
+    font-size: 0.75rem;
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+  }
+
+  /* CHART AREA */
+  .chart-area {
+    display: flex;
+    flex-direction: column;
+    padding: 32px 40px 28px;
+    gap: 0;
+    background: var(--bg);
+  }
+
+  .chart-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+  }
+
+  .chart-meta {
+    display: flex;
+    gap: 20px;
+    align-items: center;
+  }
+
+  .active-mechanisms {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .mechanism-badge {
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 3px 9px;
+    border-radius: 20px;
+    border: 1.5px solid;
+    opacity: 0;
+    transition: opacity 0.25s;
+  }
+
+  .mechanism-badge.active { opacity: 1; }
+
+  .badge-broadcast { color: var(--accent-broadcast); border-color: var(--accent-broadcast); }
+  .badge-contagion  { color: var(--accent-contagion); border-color: var(--accent-contagion); }
+  .badge-outreach   { color: var(--accent-outreach);  border-color: var(--accent-outreach); }
+  .badge-reinvest   { color: var(--accent-reinvest);  border-color: var(--accent-reinvest); }
+
+  .axis-toggle-group {
+    display: flex;
+    border: 1.5px solid var(--border);
+    border-radius: 5px;
+    overflow: hidden;
+  }
+
+  .axis-btn {
+    padding: 5px 14px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    cursor: pointer;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    font-family: 'DM Sans', sans-serif;
+    transition: background 0.15s, color 0.15s;
+  }
+
+  .axis-btn.active {
+    background: var(--text);
+    color: white;
+  }
+
+  .axis-btn:not(.active):hover {
+    background: var(--border-light);
+    color: var(--text);
+  }
+
+  .chart-wrapper {
+    flex: 1;
+    position: relative;
+    min-height: 380px;
+  }
+
+  canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  .stat-row {
+    display: flex;
+    gap: 32px;
+    margin-top: 18px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+  }
+
+  .stat-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .stat-label {
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--text-faint);
+    font-weight: 600;
+  }
+
+  .stat-value {
+    font-family: 'DM Mono', monospace;
+    font-size: 1.1rem;
+    font-weight: 500;
+    color: var(--text);
+  }
+
+  .copyright {
+    font-size: 0.65rem;
+    color: var(--text-faint);
+    margin-top: 4px;
+    text-align: right;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>3 Models of Diffusion</h1>
+  <span class="subtitle">Innovation Adoption Simulator</span>
+</header>
+
+<div class="layout">
+
+  <!-- CONTROLS -->
+  <aside class="controls">
+
+    <!-- Population -->
+    <div class="controls-section pop-section">
+      <div class="section-header" style="margin-bottom:14px">
+        <span class="section-title">Population Parameters</span>
+      </div>
+      <div class="input-row">
+        <label class="input-label" for="npop">Population Size
+          <span class="input-hint">Total potential customers</span>
+        </label>
+        <input type="number" id="npop" value="10000" min="100" max="1000000" step="100">
+      </div>
+      <div class="input-row">
+        <label class="input-label" for="start_adopt">Starting Adoption
+          <span class="input-hint">Customers at period 1</span>
+        </label>
+        <input type="number" id="start_adopt" value="25" min="1" max="10000" step="1">
+      </div>
+    </div>
+
+    <!-- Broadcast -->
+    <div class="controls-section">
+      <div class="section-header">
+        <span class="section-title">
+          <span class="section-dot dot-broadcast"></span>
+          Broadcast
+        </span>
+        <label class="toggle" title="Toggle Broadcast mechanism">
+          <input type="checkbox" id="broadcast_on" checked>
+          <span class="toggle-track"></span>
+          <span class="toggle-thumb"></span>
+        </label>
+      </div>
+      <p class="section-desc">Mass advertising (e.g., Super Bowl ads). Everyone in the remaining population sees the message each period — diffusion is proportional to the number of <em>non-adopters</em>.</p>
+      <div class="input-row">
+        <label class="input-label" for="broadcast_p">Adoption Probability
+          <span class="input-hint">Chance each non-adopter converts per period</span>
+        </label>
+        <input type="number" id="broadcast_p" value="0.05" min="0" max="1" step="0.01">
+      </div>
+    </div>
+
+    <!-- Contagion -->
+    <div class="controls-section">
+      <div class="section-header">
+        <span class="section-title">
+          <span class="section-dot dot-contagion"></span>
+          Contagion
+        </span>
+        <label class="toggle" title="Toggle Contagion mechanism">
+          <input type="checkbox" id="contagion_on">
+          <span class="toggle-track"></span>
+          <span class="toggle-thumb"></span>
+        </label>
+      </div>
+      <p class="section-desc">Word of mouth. Each existing customer "infects" others — diffusion is proportional to <em>current adopters</em>. Self-sustaining once it starts; no ongoing investment required.</p>
+      <div class="input-row">
+        <label class="input-label" for="contagion_m">Contagion Multiplier
+          <span class="input-hint">New customers per existing customer per period</span>
+        </label>
+        <input type="number" id="contagion_m" value="0.1" min="0" max="10" step="0.01">
+      </div>
+    </div>
+
+    <!-- Outreach -->
+    <div class="controls-section">
+      <div class="section-header">
+        <span class="section-title">
+          <span class="section-dot dot-outreach"></span>
+          Outreach
+        </span>
+        <label class="toggle" title="Toggle Outreach mechanism">
+          <input type="checkbox" id="outreach_on">
+          <span class="toggle-track"></span>
+          <span class="toggle-thumb"></span>
+        </label>
+      </div>
+      <p class="section-desc">Direct sales, cold outreach, or fixed ad spend. A set number of new customers are added each period through deliberate effort.</p>
+      <div class="input-row">
+        <label class="input-label" for="outreach_n">Fixed Adds per Period
+          <span class="input-hint">Customers acquired through direct effort</span>
+        </label>
+        <input type="number" id="outreach_n" value="50" min="0" max="10000" step="1">
+      </div>
+
+      <!-- Reinvestment sub-section -->
+      <div class="sub-section" id="reinvest_panel">
+        <div class="section-header" style="margin-bottom:8px">
+          <span class="section-title" style="font-size:0.9rem; font-family:'DM Sans',sans-serif; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; color:var(--accent-reinvest);">
+            + Reinvestment Rate
+          </span>
+          <label class="toggle" title="Toggle Reinvestment mechanism">
+            <input type="checkbox" id="reinvest_on">
+            <span class="toggle-track"></span>
+            <span class="toggle-thumb"></span>
+          </label>
+        </div>
+        <p class="section-desc" style="margin-bottom:10px">Profits from each existing customer are reinvested into outreach. Unlike contagion, this requires an active decision to keep spending — it scales your fixed outreach by the size of your current customer base.</p>
+        <div class="input-row">
+          <label class="input-label" for="reinvest_m">Reinvestment Multiplier
+            <span class="input-hint">Additional customers added per existing customer via reinvested spend</span>
+          </label>
+          <input type="number" id="reinvest_m" value="0.05" min="0" max="10" step="0.01">
+        </div>
+      </div>
+    </div>
+
+  </aside>
+
+  <!-- CHART -->
+  <main class="chart-area">
+    <div class="chart-toolbar">
+      <div class="active-mechanisms">
+        <span class="mechanism-badge badge-broadcast" id="badge-broadcast">Broadcast</span>
+        <span class="mechanism-badge badge-contagion" id="badge-contagion">Contagion</span>
+        <span class="mechanism-badge badge-outreach" id="badge-outreach">Outreach</span>
+        <span class="mechanism-badge badge-reinvest" id="badge-reinvest">+ Reinvestment</span>
+      </div>
+      <div class="axis-toggle-group">
+        <button class="axis-btn active" id="btn-linear" onclick="setAxis('linear')">Linear</button>
+        <button class="axis-btn" id="btn-log" onclick="setAxis('log')">Log</button>
+      </div>
+    </div>
+
+    <div class="chart-wrapper">
+      <canvas id="chart"></canvas>
+    </div>
+
+    <div class="stat-row">
+      <div class="stat-item">
+        <span class="stat-label">Period 67 Adoption</span>
+        <span class="stat-value" id="stat-final">—</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">50% Adoption Reached</span>
+        <span class="stat-value" id="stat-half">—</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">90% Adoption Reached</span>
+        <span class="stat-value" id="stat-ninety">—</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">Active Mechanisms</span>
+        <span class="stat-value" id="stat-mechs">—</span>
+      </div>
+    </div>
+    <div class="copyright">© Ben Hallen — Foster School of Business, University of Washington</div>
+  </main>
+
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+let xAxisMode = 'linear';
+
+function getParams() {
+  return {
+    npop:        parseFloat(document.getElementById('npop').value)        || 10000,
+    startAdopt:  parseFloat(document.getElementById('start_adopt').value) || 25,
+    broadcastOn: document.getElementById('broadcast_on').checked,
+    broadcastP:  parseFloat(document.getElementById('broadcast_p').value) || 0,
+    contagionOn: document.getElementById('contagion_on').checked,
+    contagionM:  parseFloat(document.getElementById('contagion_m').value) || 0,
+    outreachOn:  document.getElementById('outreach_on').checked,
+    outreachN:   parseFloat(document.getElementById('outreach_n').value)  || 0,
+    reinvestOn:  document.getElementById('reinvest_on').checked,
+    reinvestM:   parseFloat(document.getElementById('reinvest_m').value)  || 0,
+  };
+}
+
+function simulate(p) {
+  const periods = 67;
+  const pcts = [];
+  let current = Math.min(p.startAdopt, p.npop);
+
+  for (let t = 1; t <= periods; t++) {
+    pcts.push(current / p.npop);
+    if (t === periods) break;
+
+    const remaining = Math.max(0, p.npop - current);
+    let newCustomers = 0;
+
+    if (p.broadcastOn) {
+      newCustomers += remaining * p.broadcastP;
+    }
+    if (p.contagionOn) {
+      newCustomers += current * p.contagionM;
+    }
+    if (p.outreachOn) {
+      newCustomers += p.outreachN;
+      if (p.reinvestOn) {
+        newCustomers += current * p.reinvestM;
+      }
+    }
+
+    // Cap at remaining
+    newCustomers = Math.min(newCustomers, remaining);
+    current = Math.min(current + newCustomers, p.npop);
+  }
+
+  return pcts;
+}
+
+// ── Chart drawing ──────────────────────────────────────────────────────────
+const canvas = document.getElementById('chart');
+const ctx = canvas.getContext('2d');
+
+function setAxis(mode) {
+  xAxisMode = mode;
+  document.getElementById('btn-linear').classList.toggle('active', mode === 'linear');
+  document.getElementById('btn-log').classList.toggle('active', mode === 'log');
+  update();
+}
+
+function drawChart(pcts) {
+  const dpr = window.devicePixelRatio || 1;
+  const wrapper = canvas.parentElement;
+  const W = wrapper.clientWidth;
+  const H = wrapper.clientHeight;
+
+  canvas.width  = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.width  = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.scale(dpr, dpr);
+
+  const padL = 58, padR = 24, padT = 16, padB = 44;
+  const chartW = W - padL - padR;
+  const chartH = H - padT - padB;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Styles
+  const colorBg   = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+  const colorBorder= getComputedStyle(document.documentElement).getPropertyValue('--border').trim();
+  const colorText  = getComputedStyle(document.documentElement).getPropertyValue('--text').trim();
+  const colorMuted = getComputedStyle(document.documentElement).getPropertyValue('--text-faint').trim();
+  const colorLine  = getComputedStyle(document.documentElement).getPropertyValue('--chart-line').trim();
+
+  const n = pcts.length; // 67
+
+  // X mapping
+  function xPos(i) { // i = 0-based index (period = i+1)
+    const t = i + 1; // period 1..67
+    if (xAxisMode === 'log') {
+      const logMin = Math.log(1);
+      const logMax = Math.log(67);
+      return padL + ((Math.log(t) - logMin) / (logMax - logMin)) * chartW;
+    } else {
+      return padL + (i / (n - 1)) * chartW;
+    }
+  }
+
+  function yPos(pct) {
+    return padT + chartH - pct * chartH;
+  }
+
+  // Gridlines & Y-axis labels
+  ctx.font = `400 11px 'DM Mono', monospace`;
+  ctx.fillStyle = colorMuted;
+  ctx.textAlign = 'right';
+  for (let pct = 0; pct <= 100; pct += 10) {
+    const y = yPos(pct / 100);
+    ctx.strokeStyle = pct === 0 ? colorBorder : '#e0d9ce';
+    ctx.lineWidth = pct === 0 ? 1.5 : 1;
+    ctx.beginPath();
+    ctx.moveTo(padL, y);
+    ctx.lineTo(padL + chartW, y);
+    ctx.stroke();
+    ctx.fillText(pct + '%', padL - 8, y + 4);
+  }
+
+  // X-axis labels
+  ctx.textAlign = 'center';
+  ctx.fillStyle = colorMuted;
+  const xTicks = xAxisMode === 'log'
+    ? [1, 2, 3, 5, 10, 20, 30, 50, 67]
+    : [1, 10, 20, 30, 40, 50, 60, 67];
+
+  xTicks.forEach(t => {
+    const x = xPos(t - 1);
+    ctx.fillText(t, x, padT + chartH + 20);
+    ctx.strokeStyle = '#e0d9ce';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x, padT + chartH);
+    ctx.lineTo(x, padT + chartH + 5);
+    ctx.stroke();
+  });
+
+  // Axis labels
+  ctx.font = `500 10px 'DM Sans', sans-serif`;
+  ctx.fillStyle = colorMuted;
+  ctx.textAlign = 'center';
+  ctx.fillText('Time Period' + (xAxisMode === 'log' ? '  (log scale)' : ''), padL + chartW / 2, H - 4);
+
+  ctx.save();
+  ctx.translate(14, padT + chartH / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillText('% Population Adopted', 0, 0);
+  ctx.restore();
+
+  // Draw curve
+  ctx.strokeStyle = colorLine;
+  ctx.lineWidth = 2.5;
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  pcts.forEach((pct, i) => {
+    const x = xPos(i);
+    const y = yPos(pct);
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  // Dot at final period
+  const fx = xPos(n - 1);
+  const fy = yPos(pcts[n - 1]);
+  ctx.beginPath();
+  ctx.arc(fx, fy, 4.5, 0, Math.PI * 2);
+  ctx.fillStyle = colorLine;
+  ctx.fill();
+}
+
+// ── Update stats ───────────────────────────────────────────────────────────
+function updateStats(pcts, p) {
+  const final = pcts[pcts.length - 1];
+  document.getElementById('stat-final').textContent =
+    (final * 100).toFixed(1) + '%';
+
+  const half    = pcts.findIndex(v => v >= 0.5);
+  const ninety  = pcts.findIndex(v => v >= 0.9);
+  document.getElementById('stat-half').textContent    = half    >= 0 ? 'Period ' + (half + 1)    : '> 67';
+  document.getElementById('stat-ninety').textContent  = ninety  >= 0 ? 'Period ' + (ninety + 1)  : '> 67';
+
+  let mechs = [];
+  if (p.broadcastOn) mechs.push('Broadcast');
+  if (p.contagionOn) mechs.push('Contagion');
+  if (p.outreachOn)  mechs.push('Outreach' + (p.reinvestOn ? ' + Reinvest' : ''));
+  document.getElementById('stat-mechs').textContent = mechs.length ? mechs.join(', ') : 'None';
+
+  // Badges
+  document.getElementById('badge-broadcast').classList.toggle('active', p.broadcastOn);
+  document.getElementById('badge-contagion').classList.toggle('active', p.contagionOn);
+  document.getElementById('badge-outreach').classList.toggle('active', p.outreachOn);
+  document.getElementById('badge-reinvest').classList.toggle('active', p.outreachOn && p.reinvestOn);
+}
+
+// ── Reinvestment panel visibility ─────────────────────────────────────────
+function updateReinvestPanel() {
+  const outreachOn = document.getElementById('outreach_on').checked;
+  document.getElementById('reinvest_panel').classList.toggle('disabled', !outreachOn);
+}
+
+// ── Main update ────────────────────────────────────────────────────────────
+function update() {
+  const p = getParams();
+  updateReinvestPanel();
+  const pcts = simulate(p);
+  drawChart(pcts);
+  updateStats(pcts, p);
+}
+
+// ── Event listeners ────────────────────────────────────────────────────────
+document.querySelectorAll('input').forEach(el => {
+  el.addEventListener('input', update);
+  el.addEventListener('change', update);
+});
+
+window.addEventListener('resize', update);
+
+// Init
+update();
+</script>
+</body>
+</html>
